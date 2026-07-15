@@ -11,7 +11,6 @@ import onnxruntime
 import torch
 import onnx
 from torchvision.transforms import v2
-from PySide6 import QtCore
 try:
     import tensorrt as trt
     TENSORRT_AVAILABLE = True
@@ -40,24 +39,28 @@ onnxruntime.set_default_logger_severity(4)
 onnxruntime.log_verbosity_level = -1
 lock = threading.Lock()
 
-class ModelsProcessor(QtCore.QObject):
-    processing_complete = QtCore.Signal()
-    model_loaded = QtCore.Signal()  # Signal emitted with Onnx InferenceSession
-
-    def __init__(self, main_window: 'MainWindow', device='cuda'):
-        super().__init__()
+class ModelsProcessor:
+    def __init__(self, main_window: 'MainWindow' = None, device='cuda'):
+        # main_window is optional: when None, this runs headless (web/API) and
+        # the UI-notify / config accessors below fall back to plain attributes.
         self.main_window = main_window
+        # Headless fallbacks (used only when main_window is None)
+        self.max_dfm_models = 1
+        self.dfm_models_data = {}
         self.provider_name = 'TensorRT'
         self.device = device
         self.model_lock = threading.RLock()  # Reentrant lock for model access
+        # VISOMASTER_TRT_CACHE lets the web/Colab deploy persist built TensorRT
+        # engines on a Google Drive mount so they aren't rebuilt every session.
+        trt_cache = os.environ.get('VISOMASTER_TRT_CACHE', 'tensorrt-engines')
         self.trt_ep_options = {
             # 'trt_max_workspace_size': 3 << 30,  # Dimensione massima dello spazio di lavoro in bytes
             'trt_engine_cache_enable': True,
-            'trt_engine_cache_path': "tensorrt-engines",
+            'trt_engine_cache_path': trt_cache,
             'trt_timing_cache_enable': True,
-            'trt_timing_cache_path': "tensorrt-engines",
+            'trt_timing_cache_path': trt_cache,
             'trt_dump_ep_context_model': True,
-            'trt_ep_context_file_path': "tensorrt-engines",
+            'trt_ep_context_file_path': trt_cache,
             'trt_layer_norm_fp32_fallback': True,
             'trt_builder_optimization_level': 5,
         }
@@ -122,9 +125,27 @@ class ModelsProcessor(QtCore.QObject):
         self.lp_mask_crop = self.face_editors.lp_mask_crop
         self.lp_lip_array = self.face_editors.lp_lip_array
 
+    def _notify_model_loading(self):
+        if self.main_window is not None:
+            self.main_window.model_loading_signal.emit()
+
+    def _notify_model_loaded(self):
+        if self.main_window is not None:
+            self.main_window.model_loaded_signal.emit()
+
+    def _get_max_dfm_models(self):
+        if self.main_window is not None:
+            return self.main_window.control['MaxDFMModelsSlider']
+        return self.max_dfm_models
+
+    def _get_dfm_models_data(self):
+        if self.main_window is not None:
+            return self.main_window.dfm_models_data
+        return self.dfm_models_data
+
     def load_model(self, model_name, session_options=None):
         with self.model_lock:
-            self.main_window.model_loading_signal.emit()
+            self._notify_model_loading()
             # QApplication.processEvents()
             # if not is_file_exists(self.models_path[model_name]):
             #     download_file(model_name, self.models_path[model_name], self.models_data[model_name]['hash'], self.models_data[model_name]['url'])
@@ -138,15 +159,15 @@ class ModelsProcessor(QtCore.QObject):
                 del model_instance
                 gc.collect()
                 return self.models[model_name]
-            self.main_window.model_loaded_signal.emit()
+            self._notify_model_loaded()
 
             return model_instance
 
     def load_dfm_model(self, dfm_model):
         with self.model_lock:
             if not self.dfm_models.get(dfm_model):
-                self.main_window.model_loading_signal.emit()
-                max_models_to_keep = self.main_window.control['MaxDFMModelsSlider']
+                self._notify_model_loading()
+                max_models_to_keep = self._get_max_dfm_models()
                 total_loaded_models = len(self.dfm_models)
                 if total_loaded_models==max_models_to_keep:
                     print("Clearing DFM Model")
@@ -155,18 +176,18 @@ class ModelsProcessor(QtCore.QObject):
                     self.dfm_models.pop(model_name)
                     gc.collect()
                 try:
-                    self.dfm_models[dfm_model] = DFMModel(self.main_window.dfm_models_data[dfm_model], self.providers, self.device)
+                    self.dfm_models[dfm_model] = DFMModel(self._get_dfm_models_data()[dfm_model], self.providers, self.device)
                 except:
-                    traceback.print_exc()   
-                    self.dfm_models[dfm_model] = None         
-                self.main_window.model_loaded_signal.emit()
+                    traceback.print_exc()
+                    self.dfm_models[dfm_model] = None
+                self._notify_model_loaded()
             return self.dfm_models[dfm_model]
 
 
     def load_model_trt(self, model_name, custom_plugin_path=None, precision='fp16', debug=False):
         # self.showModelLoadingProgressBar()
         #time.sleep(0.5)
-        self.main_window.model_loading_signal.emit()
+        self._notify_model_loading()
 
         if not os.path.exists(self.models_trt_path[model_name]):
             onnx2trt(onnx_model_path=self.models_path[model_name],
@@ -177,7 +198,7 @@ class ModelsProcessor(QtCore.QObject):
                     )
         model_instance = TensorRTPredictor(model_path=self.models_trt_path[model_name], custom_plugin_path=custom_plugin_path, pool_size=self.nThreads, device=self.device, debug=debug)
 
-        self.main_window.model_loaded_signal.emit()
+        self._notify_model_loaded()
         return model_instance
 
     def delete_models(self):
@@ -211,10 +232,11 @@ class ModelsProcessor(QtCore.QObject):
         gc.collect()
 
     def showModelLoadingProgressBar(self):
-        self.main_window.model_load_dialog.show()
+        if self.main_window is not None:
+            self.main_window.model_load_dialog.show()
 
     def hideModelLoadProgressBar(self):
-        if self.main_window.model_load_dialog:
+        if self.main_window is not None and self.main_window.model_load_dialog:
             self.main_window.model_load_dialog.close()
 
     def switch_providers_priority(self, provider_name):
@@ -276,10 +298,10 @@ class ModelsProcessor(QtCore.QObject):
     def load_inswapper_iss_emap(self, model_name):
         with self.model_lock:
             if not self.models[model_name]:
-                self.main_window.model_loading_signal.emit()
+                self._notify_model_loading()
                 graph = onnx.load(self.models_path[model_name]).graph
                 self.emap = onnx.numpy_helper.to_array(graph.initializer[-1])
-                self.main_window.model_loaded_signal.emit()
+                self._notify_model_loaded()
 
     def run_detect(self, img, detect_mode='RetinaFace', max_num=1, score=0.5, input_size=(512, 512), use_landmark_detection=False, landmark_detect_mode='203', landmark_score=0.5, from_points=False, rotation_angles=None):
         rotation_angles = rotation_angles or [0]

@@ -1,4 +1,7 @@
-models_dir = './model_assets'
+import os
+# VISOMASTER_MODELS_DIR lets the web/Colab deploy point model_assets at a
+# persistent Google Drive mount so downloads survive across sessions.
+models_dir = os.environ.get('VISOMASTER_MODELS_DIR', './model_assets')
 assets_repo = "https://github.com/visomaster/visomaster-assets/releases/download"
 
 try:
