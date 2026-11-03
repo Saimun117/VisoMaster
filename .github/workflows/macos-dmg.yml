@@ -43,7 +43,9 @@ jobs:
           app, window = main.create_app(sys.argv)
           assert window.models_processor.provider_name == 'CoreML'
           assert hasattr(window, 'process_controller')
-          print('UI OK')
+          print('UI OK', flush=True)
+          import os
+          os._exit(0)  # skip interpreter teardown with live Qt/Core ML objects (segfaults)
           EOF
 
       - name: Build app and DMG
