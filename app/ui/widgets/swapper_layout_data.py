@@ -8,7 +8,8 @@ SWAPPER_LAYOUT_DATA: LayoutDictTypes = {
         'SwapModelSelection': {
             'level': 1,
             'label': 'Swapper Model',
-            'options': ['Inswapper128', 'InStyleSwapper256 Version A', 'InStyleSwapper256 Version B', 'InStyleSwapper256 Version C', 'DeepFaceLive (DFM)', 'SimSwap512', 'GhostFace-v1', 'GhostFace-v2', 'GhostFace-v3', 'CSCS'],            'default': 'Inswapper128',
+            'options': ['Inswapper128', 'InStyleSwapper256 Version A', 'InStyleSwapper256 Version B', 'InStyleSwapper256 Version C', 'DeepFaceLive (DFM)', 'SimSwap512', 'GhostFace-v1', 'GhostFace-v2', 'GhostFace-v3', 'CSCS', 'HyperSwap 1A', 'HyperSwap 1B', 'HyperSwap 1C'],            
+            'default': 'HyperSwap 1C',
             'help': 'Choose which swapper model to use for face swapping.'
         },
         'SwapperResSelection': {
@@ -340,7 +341,7 @@ SWAPPER_LAYOUT_DATA: LayoutDictTypes = {
         'OccluderEnableToggle': {
             'level': 1,
             'label': 'Occlusion Mask',
-            'default': False,
+            'default': True,
             'help': 'Allow objects occluding the face to show up in the swapped image.'
         },
         'OccluderSizeSlider': {
@@ -886,7 +887,7 @@ SWAPPER_LAYOUT_DATA: LayoutDictTypes = {
         'AutoColorEnableToggle': {
             'level': 1,
             'label': 'AutoColor Transfer',
-            'default': False,
+            'default': True,
             'help': 'Enable AutoColor Transfer: 1. Hans Test without mask, 2. Hans Test with mask, 3. DFL Method without mask, 4. DFL Original Method.'
         },
         'AutoColorTransferTypeSelection':{

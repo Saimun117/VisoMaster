@@ -29,6 +29,10 @@
 - **TensorRT Support**: Leverages supported GPUs for ultra-fast processing  
 - **Many More Advanced Features** 🎉  
 
+## macOS (Apple Silicon)
+- A standalone app for M1 and newer Macs is built by CI as a `.dmg`: models run on the Apple GPU through Core ML, and the app has a Mac interface with a process → preview → export workflow.
+- See [README_MACOS.md](README_MACOS.md) for installing, building and the Mac-specific settings.
+
 ## Automatic Installation (Windows)
 - For Windows users with an Nvidia GPU, we provide an automatic installer for easy set up. 
 - You can get the installer from the [releases](https://github.com/visomaster/VisoMaster/releases/tag/v0.1.1) page or from this [link](https://github.com/visomaster/VisoMaster/releases/download/v0.1.1/VisoMaster_Setup.exe).

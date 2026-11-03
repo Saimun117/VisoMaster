@@ -1,3 +1,5 @@
+import sys
+
 from app.ui.widgets.actions import control_actions
 import cv2
 from app.helpers.typing_helper import LayoutDictTypes
@@ -6,9 +8,9 @@ SETTINGS_LAYOUT_DATA: LayoutDictTypes = {
         'ThemeSelection': {
             'level': 1,
             'label': 'Theme',
-            'options': ['Dark', 'Dark-Blue', 'Light'],
-            'default': 'Dark',
-            'help': 'Select the theme to be used',
+            'options': ['macOS', 'Dark', 'Dark-Blue', 'Light'] if sys.platform == 'darwin' else ['Dark', 'Dark-Blue', 'Light'],
+            'default': 'macOS' if sys.platform == 'darwin' else 'Dark',
+            'help': 'Select the theme to be used. macOS follows the system light/dark appearance.',
             'exec_function': control_actions.change_theme,
             'exec_function_args': [],
         },
@@ -17,9 +19,9 @@ SETTINGS_LAYOUT_DATA: LayoutDictTypes = {
         'ProvidersPrioritySelection': {
             'level': 1,
             'label': 'Providers Priority',
-            'options': ['CUDA', 'TensorRT', 'TensorRT-Engine', 'CPU'],
-            'default': 'CUDA',
-            'help': 'Select the providers priority to be used with the system.',
+            'options': ['CoreML', 'CPU', 'CUDA', 'TensorRT', 'TensorRT-Engine'],
+            'default': 'CoreML',
+            'help': 'Select the providers priority to be used with the system. CoreML runs models on the Apple Silicon GPU / Neural Engine.',
             'exec_function': control_actions.change_execution_provider,
             'exec_function_args': [],
         },
@@ -28,7 +30,7 @@ SETTINGS_LAYOUT_DATA: LayoutDictTypes = {
             'label': 'Number of Threads',
             'min_value': '1',
             'max_value': '30',
-            'default': '2',
+            'default': '3',
             'step': 1,
             'help': 'Set number of execution threads while playing and recording. Depends strongly on GPU VRAM.',
             'exec_function': control_actions.change_threads_number,
@@ -69,7 +71,7 @@ SETTINGS_LAYOUT_DATA: LayoutDictTypes = {
             'level': 1,
             'label': 'Face Detect Model',
             'options': ['RetinaFace', 'Yolov8', 'SCRFD', 'Yunet'],
-            'default': 'RetinaFace',
+            'default': 'Yolov8',
             'help': 'Select the face detection model to use for detecting faces in the input image or video.'
         },
         'DetectorScoreSlider': {
@@ -89,7 +91,16 @@ SETTINGS_LAYOUT_DATA: LayoutDictTypes = {
             'default': '20',
             'step': 1,     
             'help': 'Set the maximum number of faces to detect in a frame'
-   
+
+        },
+        'DetectIntervalSlider': {
+            'level': 1,
+            'label': 'Detect Every N Frames',
+            'min_value': '1',
+            'max_value': '5',
+            'default': '2',
+            'step': 1,
+            'help': 'When playing or recording videos, run face detection and recognition only every N frames and track the faces with optical flow in between. 2 is faster with no visible difference in most videos, 1 detects on every frame. Falls back to detection automatically on scene cuts or fast motion.'
         },
         'AutoRotationToggle': {
             'level': 1,
@@ -256,7 +267,7 @@ SETTINGS_LAYOUT_DATA: LayoutDictTypes = {
             'level': 1,
             'label': 'Recognition Model',
             'options': ['Inswapper128ArcFace', 'SimSwapArcFace', 'GhostArcFace', 'CSCSArcFace'],
-            'default': 'Inswapper128ArcFace',
+            'default': 'GhostArcFace',
             'help': 'Choose the ArcFace model to be used for comparing the similarity of faces.'
         },
         'SimilarityTypeSelection': {

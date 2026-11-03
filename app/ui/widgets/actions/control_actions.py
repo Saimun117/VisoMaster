@@ -3,6 +3,7 @@ import torch
 import qdarkstyle
 from PySide6 import QtWidgets 
 import qdarktheme
+from app.ui import macos_theme
 
 if TYPE_CHECKING:
     from app.ui.main_ui import MainWindow
@@ -21,7 +22,11 @@ def change_execution_provider(main_window: 'MainWindow', new_provider):
 
 def change_threads_number(main_window: 'MainWindow', new_threads_number):
     main_window.video_processor.set_number_of_threads(new_threads_number)
-    torch.cuda.empty_cache()
+    device = main_window.models_processor.device
+    if device == 'cuda':
+        torch.cuda.empty_cache()
+    elif device == 'mps':
+        torch.mps.empty_cache()
     common_widget_actions.update_gpu_memory_progressbar(main_window)
 
 
@@ -31,9 +36,15 @@ def change_theme(main_window: 'MainWindow', new_theme):
         custom_colors = custom_colors or {"primary": "#4facc9"}
         with open(f"app/ui/styles/{filename}", "r") as f: # pylint: disable=unspecified-encoding
             _style = f.read()
-            _style = qdarktheme.load_stylesheet(theme=theme, custom_colors=custom_colors)+'\n'+_style
+            _style = qdarktheme.load_stylesheet(theme=theme)+'\n'+_style
         return _style
     app = QtWidgets.QApplication.instance()
+
+    if new_theme == "macOS":
+        macos_theme.apply(app)
+        main_window.update()
+        return
+    macos_theme.deactivate()
 
     _style = ''
     if new_theme == "Dark":

@@ -17,7 +17,7 @@ class FaceMasks:
     def apply_occlusion(self, img, amount):
         img = torch.div(img, 255)
         img = torch.unsqueeze(img, 0).contiguous()
-        outpred = torch.ones((256,256), dtype=torch.float32, device=self.models_processor.device).contiguous()
+        outpred = torch.ones((256,256), dtype=torch.float32, device=self.models_processor.ort_device).contiguous()
 
         self.models_processor.run_occluder(img, outpred)
 
@@ -26,7 +26,7 @@ class FaceMasks:
         outpred = torch.unsqueeze(outpred, 0).type(torch.float32)
 
         if amount >0:
-            kernel = torch.ones((1,1,3,3), dtype=torch.float32, device=self.models_processor.device)
+            kernel = torch.ones((1,1,3,3), dtype=torch.float32, device=self.models_processor.ort_device)
 
             for _ in range(int(amount)):
                 outpred = torch.nn.functional.conv2d(outpred, kernel, padding=(1, 1))
@@ -37,7 +37,7 @@ class FaceMasks:
         if amount <0:
             outpred = torch.neg(outpred)
             outpred = torch.add(outpred, 1)
-            kernel = torch.ones((1,1,3,3), dtype=torch.float32, device=self.models_processor.device)
+            kernel = torch.ones((1,1,3,3), dtype=torch.float32, device=self.models_processor.ort_device)
 
             for _ in range(int(-amount)):
                 outpred = torch.nn.functional.conv2d(outpred, kernel, padding=(1, 1))
@@ -55,20 +55,17 @@ class FaceMasks:
             self.models_processor.models['Occluder'] = self.models_processor.load_model('Occluder')
 
         io_binding = self.models_processor.models['Occluder'].io_binding()
-        io_binding.bind_input(name='img', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=(1,3,256,256), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='output', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=(1,1,256,256), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='img', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=(1,3,256,256), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=(1,1,256,256), buffer_ptr=output.data_ptr())
 
-        if self.models_processor.device == "cuda":
-            torch.cuda.synchronize()
-        elif self.models_processor.device != "cpu":
-            self.models_processor.syncvec.cpu()
+        self.models_processor.synchronize()
         self.models_processor.models['Occluder'].run_with_iobinding(io_binding)
 
     def apply_dfl_xseg(self, img, amount):
         img = img.type(torch.float32)
         img = torch.div(img, 255)
         img = torch.unsqueeze(img, 0).contiguous()
-        outpred = torch.ones((256,256), dtype=torch.float32, device=self.models_processor.device).contiguous()
+        outpred = torch.ones((256,256), dtype=torch.float32, device=self.models_processor.ort_device).contiguous()
 
         self.run_dfl_xseg(img, outpred)
 
@@ -79,7 +76,7 @@ class FaceMasks:
         outpred = torch.unsqueeze(outpred, 0).type(torch.float32)
 
         if amount > 0:
-            kernel = torch.ones((1,1,3,3), dtype=torch.float32, device=self.models_processor.device)
+            kernel = torch.ones((1,1,3,3), dtype=torch.float32, device=self.models_processor.ort_device)
 
             for _ in range(int(amount)):
                 outpred = torch.nn.functional.conv2d(outpred, kernel, padding=(1, 1))
@@ -90,7 +87,7 @@ class FaceMasks:
         if amount < 0:
             outpred = torch.neg(outpred)
             outpred = torch.add(outpred, 1)
-            kernel = torch.ones((1,1,3,3), dtype=torch.float32, device=self.models_processor.device)
+            kernel = torch.ones((1,1,3,3), dtype=torch.float32, device=self.models_processor.ort_device)
 
             for _ in range(int(-amount)):
                 outpred = torch.nn.functional.conv2d(outpred, kernel, padding=(1, 1))
@@ -108,13 +105,10 @@ class FaceMasks:
             self.models_processor.models['XSeg'] = self.models_processor.load_model('XSeg')
 
         io_binding = self.models_processor.models['XSeg'].io_binding()
-        io_binding.bind_input(name='in_face:0', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='out_mask:0', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=(1,1,256,256), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='in_face:0', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=image.size(), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='out_mask:0', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=(1,1,256,256), buffer_ptr=output.data_ptr())
 
-        if self.models_processor.device == "cuda":
-            torch.cuda.synchronize()
-        elif self.models_processor.device != "cpu":
-            self.models_processor.syncvec.cpu()
+        self.models_processor.synchronize()
         self.models_processor.models['XSeg'].run_with_iobinding(io_binding)
         
     def apply_face_parser(self, img, parameters):
@@ -124,7 +118,7 @@ class FaceMasks:
         img = torch.div(img, 255)
         img = v2.functional.normalize(img, (0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
         img = torch.reshape(img, (1, 3, 512, 512))
-        outpred = torch.empty((1,19,512,512), dtype=torch.float32, device=self.models_processor.device).contiguous()
+        outpred = torch.empty((1,19,512,512), dtype=torch.float32, device=self.models_processor.ort_device).contiguous()
 
         self.run_faceparser(img, outpred)
 
@@ -147,12 +141,12 @@ class FaceMasks:
         }
         
         # Pre-calculated kernel for dilation (3x3 kernel to reduce iterations)
-        kernel = torch.ones((1, 1, 3, 3), dtype=torch.float32, device=self.models_processor.device)  # Kernel 3x3
+        kernel = torch.ones((1, 1, 3, 3), dtype=torch.float32, device=self.models_processor.ort_device)  # Kernel 3x3
 
         face_parses = []
         for attribute, attribute_value in face_attributes.items():
             if attribute_value > 0:
-                attribute_idxs = torch.tensor( [attribute], device=self.models_processor.device)
+                attribute_idxs = torch.tensor( [attribute], device=self.models_processor.ort_device)
                 iters = int(attribute_value)
 
                 attribute_parse = torch.isin(outpred, attribute_idxs)
@@ -176,11 +170,11 @@ class FaceMasks:
                     gauss = transforms.GaussianBlur(blur_kernel_size, (parameters['FaceBlurParserSlider'] + 1) * 0.2)
                     attribute_parse = gauss(attribute_parse)
             else:
-                attribute_parse = torch.ones((1, 512, 512), dtype=torch.float32, device=self.models_processor.device)
+                attribute_parse = torch.ones((1, 512, 512), dtype=torch.float32, device=self.models_processor.ort_device)
             face_parses.append(attribute_parse)
 
         # BG Parse
-        bg_idxs = torch.tensor([0, 14, 15, 16, 17, 18], device=self.models_processor.device)
+        bg_idxs = torch.tensor([0, 14, 15, 16, 17, 18], device=self.models_processor.ort_device)
 
         # For bg_parse, invert the mask so that the black background expands
         bg_parse = 1 - torch.isin(outpred, bg_idxs).float().unsqueeze(0).unsqueeze(0)  # (1, 1, 512, 512)
@@ -213,7 +207,7 @@ class FaceMasks:
 
         else:
             # If FaceAmount is 0, use a fully white mask
-            bg_parse = torch.ones((1, 512, 512), dtype=torch.float32, device=self.models_processor.device)
+            bg_parse = torch.ones((1, 512, 512), dtype=torch.float32, device=self.models_processor.ort_device)
 
         out_parse = bg_parse.squeeze(0)
         for face_parse in face_parses:
@@ -231,13 +225,10 @@ class FaceMasks:
 
         image = image.contiguous()
         io_binding = self.models_processor.models['FaceParser'].io_binding()
-        io_binding.bind_input(name='input', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='output', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=(1,19,512,512), buffer_ptr=output.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='output', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=(1,19,512,512), buffer_ptr=output.data_ptr())
 
-        if self.models_processor.device == "cuda":
-            torch.cuda.synchronize()
-        elif self.models_processor.device != "cpu":
-            self.models_processor.syncvec.cpu()
+        self.models_processor.synchronize()
         self.models_processor.models['FaceParser'].run_with_iobinding(io_binding)
 
     def run_CLIPs(self, img, CLIPText, CLIPAmount):
@@ -248,6 +239,7 @@ class FaceMasks:
         if not self.models_processor.clip_session:
             self.models_processor.clip_session = CLIPDensePredT(version='ViT-B/16', reduce_dim=64, complex_trans_conv=True)
             self.models_processor.clip_session.eval()
+            self.models_processor.ensure_model_file('RD64ClipText')
             self.models_processor.clip_session.load_state_dict(torch.load(f'{models_dir}/rd64-uni-refined.pth', weights_only=True), strict=False)
             self.models_processor.clip_session.to(device)  # Sposta il modello sul dispositivo dell'immagine
 

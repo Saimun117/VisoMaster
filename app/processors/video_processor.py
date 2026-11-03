@@ -5,17 +5,24 @@ import time
 import subprocess
 from pathlib import Path
 import os
+import sys
 import gc
 from functools import partial
 
 import cv2
 import numpy
 import torch
-import pyvirtualcam
+try:
+    import pyvirtualcam
+    _PYVIRTUALCAM_AVAILABLE = True
+except ImportError:
+    pyvirtualcam = None
+    _PYVIRTUALCAM_AVAILABLE = False
 
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 from PySide6.QtGui import QPixmap
 from app.processors.workers.frame_worker import FrameWorker
+from app.processors.utils.face_tracker import FaceTracker
 from app.ui.widgets.actions import graphics_view_actions
 from app.ui.widgets.actions import common_actions as common_widget_actions
 
@@ -26,10 +33,16 @@ import app.helpers.miscellaneous as misc_helpers
 if TYPE_CHECKING:
     from app.ui.main_ui import MainWindow
 
+# A failed read this close to the reported last frame is treated as the end of the video
+END_OF_VIDEO_TOLERANCE = 10
+PROCESSED_CACHE_DIR =os.path.expanduser('~/Library/Caches/VisoMaster/processed') if sys.platform == 'darwin' else os.path.abspath('processed_cache')
+
 class VideoProcessor(QObject):
     frame_processed_signal = Signal(int, QPixmap, numpy.ndarray)
     webcam_frame_processed_signal = Signal(QPixmap, numpy.ndarray)
     single_frame_processed_signal = Signal(int, QPixmap, numpy.ndarray)
+    # (result file path, whether the whole video was processed) for the process -> export flow
+    processing_finished_signal = Signal(str, bool)
     def __init__(self, main_window: 'MainWindow', num_threads=2):
         super().__init__()
         self.main_window = main_window
@@ -43,9 +56,11 @@ class VideoProcessor(QObject):
         self.media_path = None
         self.num_threads = num_threads
         self.threads: Dict[int, threading.Thread] = {}
+        self.face_tracker = FaceTracker()
 
         self.current_frame: numpy.ndarray = []
         self.recording = False
+        self.process_to_preview = False
 
         self.virtcam: pyvirtualcam.Camera|None = None
 
@@ -99,7 +114,10 @@ class VideoProcessor(QObject):
         else:
             graphics_view_actions.update_graphics_view(self.main_window, pixmap, frame_number,)
         self.current_frame = frame
-        torch.cuda.empty_cache()
+        if self.main_window.models_processor.device == 'cuda':
+            torch.cuda.empty_cache()
+        elif self.main_window.models_processor.device == 'mps':
+            torch.mps.empty_cache()
         #Set GPU Memory Progressbar
         common_widget_actions.update_gpu_memory_progressbar(self.main_window)
     def display_next_frame(self):
@@ -179,11 +197,15 @@ class VideoProcessor(QObject):
                 self.processing = True
                 self.frames_to_display.clear()
                 self.threads.clear()
+                self.face_tracker.reset()
 
                 if self.recording:
                     self.create_ffmpeg_subprocess()
 
-                self.play_start_time = float(self.media_capture.get(cv2.CAP_PROP_POS_FRAMES) / float(self.fps))
+                # Preview reads (slider moves, face lookups) leave the capture a frame or more ahead
+                # of current_frame_number; re-sync so frame numbers, markers and audio line up
+                self.media_capture.set(cv2.CAP_PROP_POS_FRAMES, self.current_frame_number)
+                self.play_start_time = float(self.current_frame_number / float(self.fps))
 
                 if self.main_window.control['VideoPlaybackCustomFpsToggle']:
                     fps = self.main_window.control['VideoPlaybackCustomFpsSlider']
@@ -243,6 +265,12 @@ class VideoProcessor(QObject):
                 self.frame_queue.put(self.current_frame_number)
                 self.start_frame_worker(self.current_frame_number, frame)
                 self.current_frame_number += 1
+            elif self.current_frame_number > 0 and self.max_frame_number - self.current_frame_number < END_OF_VIDEO_TOLERANCE:
+                # Containers often report a few more frames than they decode: this is the real end
+                # of the video, so finish normally once the frames already queued are shown
+                print(f"End of video at frame {self.current_frame_number} (container reported {self.max_frame_number + 1})")
+                self.max_frame_number = self.current_frame_number - 1
+                self.frame_read_timer.stop()
             else:
                 print("Cannot read frame!", self.current_frame_number)
                 self.stop_processing()
@@ -252,6 +280,8 @@ class VideoProcessor(QObject):
         """Start a FrameWorker to process the given frame."""
         worker = FrameWorker(frame, self.main_window, frame_number, self.frame_queue, is_single_frame)
         self.threads[frame_number] = worker
+        if not is_single_frame:
+            self.face_tracker.frame_queued(frame_number)
         if is_single_frame:
             worker.run()
         else:
@@ -350,11 +380,19 @@ class VideoProcessor(QObject):
                 self.recording_sp.stdin.close()
                 self.recording_sp.wait()
 
-            self.play_end_time = float(self.media_capture.get(cv2.CAP_PROP_POS_FRAMES) / float(self.fps))
+            # end of the last shown frame (not its start), so the audio and -shortest keep every frame
+            self.play_end_time = float(self.next_frame_to_display / float(self.fps))
 
             if self.file_type=='video':
+                final_file_path = None
+                completed = self.next_frame_to_display > self.max_frame_number
                 if self.recording:
-                    final_file_path = misc_helpers.get_output_file_path(self.media_path, self.main_window.control['OutputMediaFolder'])
+                    if self.process_to_preview:
+                        # Process -> preview -> export flow: keep the result in the cache until exported
+                        os.makedirs(PROCESSED_CACHE_DIR, exist_ok=True)
+                        final_file_path = os.path.join(PROCESSED_CACHE_DIR, f'{Path(self.media_path).stem}_processed.mp4')
+                    else:
+                        final_file_path = misc_helpers.get_output_file_path(self.media_path, self.main_window.control['OutputMediaFolder'])
                     if Path(final_file_path).is_file():
                         os.remove(final_file_path)
                     print("Adding audio...")
@@ -378,11 +416,18 @@ class VideoProcessor(QObject):
 
                 if self.recording:
                     layout_actions.enable_all_parameters_and_control_widget(self.main_window)
+                if self.recording and self.process_to_preview:
+                    self.process_to_preview = False
+                    self.recording = False
+                    self.processing_finished_signal.emit(final_file_path, completed)
 
             self.recording = False #Set recording as False to make sure the next process_video() call doesnt not record the video, unless the user press the record button
 
             print("Clearing Cache")
-            torch.cuda.empty_cache()
+            if self.main_window.models_processor.device == 'cuda':
+                torch.cuda.empty_cache()
+            elif self.main_window.models_processor.device == 'mps':
+                torch.mps.empty_cache()
             gc.collect()
             video_control_actions.reset_media_buttons(self.main_window)
             print("Successfully Stopped Processing")
@@ -404,6 +449,11 @@ class VideoProcessor(QObject):
         if Path(self.temp_file).is_file():
             os.remove(self.temp_file)
 
+        if sys.platform == 'darwin':
+            # Hardware encoder: keeps the CPU free for frame processing, q75 is visually lossless
+            codec_args = ["-c:v", "h264_videotoolbox", "-q:v", "75"]
+        else:
+            codec_args = ["-c:v", "libx264", "-crf", "18"]
         args = [
             "ffmpeg",
             "-hide_banner",
@@ -413,9 +463,8 @@ class VideoProcessor(QObject):
             "-s", f"{frame_width}x{frame_height}",  # Frame resolution
             "-r", str(self.fps),          # Frame rate
             "-i", "pipe:",                # Input from stdin
-            "-vf", f"pad=ceil(iw/2)*2:ceil(ih/2)*2,format=yuvj420p",  # Padding and format conversion            
-            "-c:v", "libx264",            # H.264 codec
-            "-crf", "18",                 # Quality setting
+            "-vf", f"pad=ceil(iw/2)*2:ceil(ih/2)*2,format=yuvj420p",  # Padding and format conversion
+            *codec_args,
             self.temp_file                # Output file
         ]
 

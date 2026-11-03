@@ -70,7 +70,7 @@ class FaceDetectors:
         img = resize(img)
         img = img.permute(1,2,0)
 
-        det_img = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.float32, device=self.models_processor.device)
+        det_img = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.float32, device=self.models_processor.ort_device)
         det_img[:new_height,:new_width,  :] = img
 
         # Switch to RGB and normalize
@@ -102,23 +102,20 @@ class FaceDetectors:
                 aimg = torch.unsqueeze(det_img, 0).contiguous()
 
             io_binding = self.models_processor.models['RetinaFace'].io_binding()
-            io_binding.bind_input(name='input.1', device_type=self.models_processor.device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
+            io_binding.bind_input(name='input.1', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
 
-            io_binding.bind_output('448', self.models_processor.device)
-            io_binding.bind_output('471', self.models_processor.device)
-            io_binding.bind_output('494', self.models_processor.device)
-            io_binding.bind_output('451', self.models_processor.device)
-            io_binding.bind_output('474', self.models_processor.device)
-            io_binding.bind_output('497', self.models_processor.device)
-            io_binding.bind_output('454', self.models_processor.device)
-            io_binding.bind_output('477', self.models_processor.device)
-            io_binding.bind_output('500', self.models_processor.device)
+            io_binding.bind_output('448', self.models_processor.ort_device)
+            io_binding.bind_output('471', self.models_processor.ort_device)
+            io_binding.bind_output('494', self.models_processor.ort_device)
+            io_binding.bind_output('451', self.models_processor.ort_device)
+            io_binding.bind_output('474', self.models_processor.ort_device)
+            io_binding.bind_output('497', self.models_processor.ort_device)
+            io_binding.bind_output('454', self.models_processor.ort_device)
+            io_binding.bind_output('477', self.models_processor.ort_device)
+            io_binding.bind_output('500', self.models_processor.ort_device)
 
             # Sync and run model
-            if self.models_processor.device == "cuda":
-                torch.cuda.synchronize()
-            elif self.models_processor.device != "cpu":
-                self.models_processor.syncvec.cpu()
+            self.models_processor.synchronize()
             self.models_processor.models['RetinaFace'].run_with_iobinding(io_binding)
 
             net_outs = io_binding.copy_outputs_to_cpu()
@@ -334,7 +331,7 @@ class FaceDetectors:
         img = resize(img)
         img = img.permute(1,2,0)
 
-        det_img = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.float32, device=self.models_processor.device)
+        det_img = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.float32, device=self.models_processor.ort_device)
         det_img[:new_height,:new_width,  :] = img
 
         # Switch to RGB and normalize
@@ -372,16 +369,13 @@ class FaceDetectors:
                 aimg = torch.unsqueeze(det_img, 0).contiguous()
 
             io_binding = self.models_processor.models['SCRFD2.5g'].io_binding()
-            io_binding.bind_input(name=input_name, device_type=self.models_processor.device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
+            io_binding.bind_input(name=input_name, device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
 
             for i in range(len(output_names)):
-                io_binding.bind_output(output_names[i], self.models_processor.device)
+                io_binding.bind_output(output_names[i], self.models_processor.ort_device)
 
             # Sync and run model
-            if self.models_processor.device == "cuda":
-                torch.cuda.synchronize()
-            elif self.models_processor.device != "cpu":
-                self.models_processor.syncvec.cpu()
+            self.models_processor.synchronize()
             self.models_processor.models['SCRFD2.5g'].run_with_iobinding(io_binding)
 
             net_outs = io_binding.copy_outputs_to_cpu()
@@ -597,7 +591,7 @@ class FaceDetectors:
         img = resize(img)
         img = img.permute(1,2,0)
 
-        det_img = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.uint8, device=self.models_processor.device)
+        det_img = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.uint8, device=self.models_processor.ort_device)
         det_img[:new_height,:new_width,  :] = img
 
         det_img = det_img.permute(2, 0, 1)
@@ -631,14 +625,11 @@ class FaceDetectors:
                 IM = None
 
             io_binding = self.models_processor.models['YoloFace8n'].io_binding()
-            io_binding.bind_input(name='images', device_type=self.models_processor.device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
-            io_binding.bind_output('output0', self.models_processor.device)
+            io_binding.bind_input(name='images', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
+            io_binding.bind_output('output0', self.models_processor.ort_device)
 
             # Sync and run model
-            if self.models_processor.device == "cuda":
-                torch.cuda.synchronize()
-            elif self.models_processor.device != "cpu":
-                self.models_processor.syncvec.cpu()
+            self.models_processor.synchronize()
             self.models_processor.models['YoloFace8n'].run_with_iobinding(io_binding)
 
             net_outs = io_binding.copy_outputs_to_cpu()
@@ -835,7 +826,7 @@ class FaceDetectors:
 
         img = img.permute(1,2,0)
 
-        det_img = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.uint8, device=self.models_processor.device)
+        det_img = torch.zeros((input_size[1], input_size[0], 3), dtype=torch.uint8, device=self.models_processor.ort_device)
         det_img[:new_height,:new_width,  :] = img
 
         # Switch to BGR
@@ -873,16 +864,13 @@ class FaceDetectors:
             aimg = aimg.to(dtype=torch.float32)
 
             io_binding = self.models_processor.models['YunetN'].io_binding()
-            io_binding.bind_input(name=input_name, device_type=self.models_processor.device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
+            io_binding.bind_input(name=input_name, device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
 
             for i in range(len(output_names)):
-                io_binding.bind_output(output_names[i], self.models_processor.device)
+                io_binding.bind_output(output_names[i], self.models_processor.ort_device)
 
             # Sync and run model
-            if self.models_processor.device == "cuda":
-                torch.cuda.synchronize()
-            elif self.models_processor.device != "cpu":
-                self.models_processor.syncvec.cpu()
+            self.models_processor.synchronize()
             self.models_processor.models['YunetN'].run_with_iobinding(io_binding)
             net_outs = io_binding.copy_outputs_to_cpu()
 

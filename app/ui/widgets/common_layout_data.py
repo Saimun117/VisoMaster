@@ -31,10 +31,10 @@ COMMON_LAYOUT_DATA: LayoutDictTypes = {
             'level': 2,
             'label': 'Restorer Type',
             'options': ['GFPGAN-v1.4', 'CodeFormer', 'GPEN-256', 'GPEN-512', 'GPEN-1024', 'GPEN-2048', 'RestoreFormer++', 'VQFR-v2'],
-            'default': 'GFPGAN-v1.4',
+            'default': 'GPEN-256',
             'parentToggle': 'FaceRestorerEnableToggle',
             'requiredToggleValue': True,
-            'help': 'Select the model type for face restoration.'
+            'help': 'Select the model type for face restoration. On Apple Silicon GPEN-256 is the fast choice (~70 ms per face); GFPGAN and GPEN-512 and above take 0.4-1.5 s per face.'
         },
         'FaceRestorerDetTypeSelection': {
             'level': 2,
@@ -78,10 +78,10 @@ COMMON_LAYOUT_DATA: LayoutDictTypes = {
             'level': 2,
             'label': 'Restorer Type',
             'options': ['GFPGAN-v1.4', 'CodeFormer', 'GPEN-256', 'GPEN-512', 'GPEN-1024', 'GPEN-2048', 'RestoreFormer++', 'VQFR-v2'],
-            'default': 'GFPGAN-v1.4',
+            'default': 'GPEN-256',
             'parentToggle': 'FaceRestorerEnable2Toggle',
             'requiredToggleValue': True,
-            'help': 'Select the model type for face restoration.'
+            'help': 'Select the model type for face restoration. On Apple Silicon GPEN-256 is the fast choice (~70 ms per face); GFPGAN and GPEN-512 and above take 0.4-1.5 s per face.'
         },
         'FaceRestorerDetType2Selection': {
             'level': 2,

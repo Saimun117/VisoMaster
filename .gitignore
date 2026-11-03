@@ -35,3 +35,12 @@ dependencies/TensorRT/
 *.jpg
 *.exe
 .thumbnails
+# macOS build and local runtime files
+.venv/
+.bin/
+build/
+dist/
+*.dmg
+model_assets/mac_optimized/
+temp_output.mp4
+.DS_Store

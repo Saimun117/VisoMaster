@@ -60,6 +60,8 @@ arcface_src_cuda = torch.tensor(
 ) # Shape: (5, 2)
 if torch.cuda.is_available():
     arcface_src_cuda = arcface_src_cuda.to('cuda')
+elif torch.backends.mps.is_available():
+    arcface_src_cuda = arcface_src_cuda.to('mps')
 
 def pad_image_by_size(img, image_size):
     # Se image_size non è una tupla, crea una tupla con altezza e larghezza uguali

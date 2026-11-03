@@ -49,6 +49,9 @@ arcface_mapping_model_dict = {
     'GhostFace-v2': 'GhostArcFace',
     'GhostFace-v3': 'GhostArcFace',
     'CSCS': 'CSCSArcFace',
+    'HyperSwap 1A': 'Inswapper128ArcFace',
+    'HyperSwap 1B': 'Inswapper128ArcFace',
+    'HyperSwap 1C': 'Inswapper128ArcFace',
 }
 
 detection_model_mapping = {
@@ -71,6 +74,24 @@ landmark_model_mapping = {
 
 
 models_list = [
+    {
+        "model_name": "HyperSwap 1A",
+        "local_path": f"{models_dir}/hyperswap_1a_256.onnx",
+        "url": "https://github.com/facefusion/facefusion-assets/releases/download/models-3.3.0/hyperswap_1a_256.onnx",
+        "hash": "c0e98a8a03a238f461ed3d2570e426b49f46745ee400854a60dceeb70c246add",
+    },
+    {
+        "model_name": "HyperSwap 1B",
+        "local_path": f"{models_dir}/hyperswap_1b_256.onnx",
+        "url": "https://github.com/facefusion/facefusion-assets/releases/download/models-3.3.0/hyperswap_1b_256.onnx",
+        "hash": "5124031789c42f71b9558fb71954ef7aedb6da7ed9fac79293e23c61a792a73e",
+    },
+    {
+        "model_name": "HyperSwap 1C",
+        "local_path": f"{models_dir}/hyperswap_1c_256.onnx",
+        "url": "https://github.com/facefusion/facefusion-assets/releases/download/models-3.3.0/hyperswap_1c_256.onnx",
+        "hash": "5528c2d76fe9986c99d829278987ef9f3a630cb606db7628d02b57b330f406a5",
+    },
     {
         "model_name": "Inswapper128",
         "local_path": f"{models_dir}/inswapper_128.fp16.onnx",

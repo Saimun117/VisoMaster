@@ -13,7 +13,7 @@ class DFMModel:
         self._model_path = model_path
         self.providers = providers
         self.device = device
-        self.syncvec = torch.empty((1, 1), dtype=torch.float32, device=device)
+        self.syncvec = torch.empty((1, 1), dtype=torch.float32, device='cpu')
         
         sess = self._sess = onnxruntime.InferenceSession(str(model_path), providers=self.providers)
         inputs = sess.get_inputs()
@@ -121,9 +121,11 @@ class DFMModel:
             )
 
         # Run the model
-        if self.device == "cuda":
+        if self.device == 'cuda':
             torch.cuda.synchronize()
-        elif self.device != "cpu":
+        elif self.device == 'mps':
+            torch.mps.synchronize()
+        else:
             self.syncvec.cpu()
         self._sess.run_with_iobinding(io_binding)
 

@@ -21,6 +21,8 @@ except ModuleNotFoundError:
 
 from app.processors.utils.engine_builder import onnx_to_trt as onnx2trt
 from app.processors.utils.tensorrt_predictor import TensorRTPredictor
+from app.processors.utils.coreml_session import CoreMLSession, coreml_providers, create_session
+from app.processors.utils import fast_affine
 from app.processors.face_detectors import FaceDetectors
 from app.processors.face_landmark_detectors import FaceLandmarkDetectors
 from app.processors.face_masks import FaceMasks
@@ -36,6 +38,7 @@ from app.helpers.downloader import download_file
 if TYPE_CHECKING:
     from app.ui.main_ui import MainWindow
 
+fast_affine.install()
 onnxruntime.set_default_logger_severity(4)
 onnxruntime.log_verbosity_level = -1
 lock = threading.Lock()
@@ -44,10 +47,17 @@ class ModelsProcessor(QtCore.QObject):
     processing_complete = QtCore.Signal()
     model_loaded = QtCore.Signal()  # Signal emitted with Onnx InferenceSession
 
-    def __init__(self, main_window: 'MainWindow', device='cuda'):
+    def __init__(self, main_window: 'MainWindow', device=None):
         super().__init__()
         self.main_window = main_window
         self.provider_name = 'TensorRT'
+        if device is None:
+            if torch.cuda.is_available():
+                device = 'cuda'
+            else:
+                # Apple Silicon: models run on GPU/Neural Engine through CoreML, torch glue stays on CPU
+                device = 'cpu'
+                self.provider_name = 'CoreML'
         self.device = device
         self.model_lock = threading.RLock()  # Reentrant lock for model access
         self.trt_ep_options = {
@@ -61,12 +71,18 @@ class ModelsProcessor(QtCore.QObject):
             'trt_layer_norm_fp32_fallback': True,
             'trt_builder_optimization_level': 5,
         }
-        self.providers = [
-            ('CUDAExecutionProvider'),
-            ('CPUExecutionProvider')
-        ]       
+        if self.device == 'cuda':
+            self.providers = [
+                ('CUDAExecutionProvider'),
+                ('CPUExecutionProvider')
+            ]
+        elif self.provider_name == 'CoreML':
+            self.providers = coreml_providers()
+        else:
+            self.providers = [('CPUExecutionProvider')]
         self.nThreads = 2
-        self.syncvec = torch.empty((1, 1), dtype=torch.float32, device=self.device)
+        # syncvec must live on CPU so it can be used as a sync barrier for onnxruntime
+        self.syncvec = torch.empty((1, 1), dtype=torch.float32, device='cpu')
 
         # Initialize models and models_path
         self.models: Dict[str, onnxruntime.InferenceSession] = {}
@@ -122,16 +138,42 @@ class ModelsProcessor(QtCore.QObject):
         self.lp_mask_crop = self.face_editors.lp_mask_crop
         self.lp_lip_array = self.face_editors.lp_lip_array
 
+    @property
+    def ort_device(self):
+        """Device string for onnxruntime io_binding — MPS is not supported so falls back to cpu."""
+        return 'cpu' if self.device == 'mps' else self.device
+
+    def synchronize(self):
+        """Synchronize the current device before onnxruntime io_binding."""
+        if self.device == 'cuda':
+            torch.cuda.synchronize()
+        elif self.device == 'mps':
+            torch.mps.synchronize()
+        else:
+            self.syncvec.cpu()
+
+    def ensure_model_file(self, model_name):
+        """Download a model the first time it's needed (the packaged Mac app ships without
+        the 11 GB of models; installs from source may be missing some too)."""
+        path = self.models_path[model_name]
+        if is_file_exists(path):
+            return
+        data = self.models_data[model_name]
+        if not data.get('url'):
+            raise FileNotFoundError(f'Model file missing and no download URL: {path}')
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        print(f'Downloading model {model_name} (first use)...')
+        if not download_file(model_name, path, data['hash'], data['url']):
+            raise RuntimeError(f'Could not download {model_name} from {data["url"]}')
+
     def load_model(self, model_name, session_options=None):
         with self.model_lock:
             self.main_window.model_loading_signal.emit()
-            # QApplication.processEvents()
-            # if not is_file_exists(self.models_path[model_name]):
-            #     download_file(model_name, self.models_path[model_name], self.models_data[model_name]['hash'], self.models_data[model_name]['url'])
-            if session_options is None:
-                model_instance = onnxruntime.InferenceSession(self.models_path[model_name], providers=self.providers)
+            self.ensure_model_file(model_name)
+            if self.provider_name == 'CoreML':
+                model_instance = CoreMLSession(self.models_path[model_name], sess_options=session_options)
             else:
-                model_instance = onnxruntime.InferenceSession(self.models_path[model_name], sess_options=session_options, providers=self.providers)
+                model_instance = create_session(self.models_path[model_name], self.providers, session_options)
 
             # Check if another thread has already loaded an instance for this model, if yes then delete the current one and return that instead
             if self.models[model_name]:
@@ -241,6 +283,11 @@ class ModelsProcessor(QtCore.QObject):
                                 ('CPUExecutionProvider')
                             ]
                 self.device = 'cuda'
+            case "CoreML" | "MPS":
+                # Old "MPS" workspaces map to CoreML: onnxruntime can't bind MPS tensors anyway
+                providers = coreml_providers()
+                self.device = 'cpu'
+                provider_name = 'CoreML'
             #case _:
 
         self.providers = providers
@@ -254,29 +301,42 @@ class ModelsProcessor(QtCore.QObject):
         self.delete_models_trt()
 
     def get_gpu_memory(self):
-        command = "nvidia-smi --query-gpu=memory.total --format=csv"
-        memory_total_info = sp.check_output(command.split()).decode('ascii').split('\n')[:-1][1:]
-        memory_total = [int(x.split()[0]) for i, x in enumerate(memory_total_info)]
+        if self.device != 'cuda':
+            if self.provider_name == 'CoreML':
+                # Apple Silicon has unified memory: report what the system is using
+                import psutil
+                mem = psutil.virtual_memory()
+                return (mem.total - mem.available) // (1024 * 1024), mem.total // (1024 * 1024)
+            return 0, 0
+        try:
+            command = "nvidia-smi --query-gpu=memory.total --format=csv"
+            memory_total_info = sp.check_output(command.split()).decode('ascii').split('\n')[:-1][1:]
+            memory_total = [int(x.split()[0]) for i, x in enumerate(memory_total_info)]
 
-        command = "nvidia-smi --query-gpu=memory.free --format=csv"
-        memory_free_info = sp.check_output(command.split()).decode('ascii').split('\n')[:-1][1:]
-        memory_free = [int(x.split()[0]) for i, x in enumerate(memory_free_info)]
+            command = "nvidia-smi --query-gpu=memory.free --format=csv"
+            memory_free_info = sp.check_output(command.split()).decode('ascii').split('\n')[:-1][1:]
+            memory_free = [int(x.split()[0]) for i, x in enumerate(memory_free_info)]
 
-        memory_used = memory_total[0] - memory_free[0]
-
-        return memory_used, memory_total[0]
+            memory_used = memory_total[0] - memory_free[0]
+            return memory_used, memory_total[0]
+        except Exception:
+            return 0, 0
     
     def clear_gpu_memory(self):
         self.delete_models()
         self.delete_models_dfm()
         self.delete_models_trt()
-        torch.cuda.empty_cache()
+        if self.device == 'cuda':
+            torch.cuda.empty_cache()
+        elif self.device == 'mps':
+            torch.mps.empty_cache()
 
 
     def load_inswapper_iss_emap(self, model_name):
         with self.model_lock:
             if not self.models[model_name]:
                 self.main_window.model_loading_signal.emit()
+                self.ensure_model_file(model_name)
                 graph = onnx.load(self.models_path[model_name]).graph
                 self.emap = onnx.numpy_helper.to_array(graph.initializer[-1])
                 self.main_window.model_loaded_signal.emit()
@@ -323,6 +383,12 @@ class ModelsProcessor(QtCore.QObject):
 
     def calc_swapper_latent_cscs(self, source_embedding):
         return self.face_swappers.calc_swapper_latent_cscs(source_embedding)
+
+    def calc_swapper_latent_hyperswap(self, source_embedding):
+        return self.face_swappers.calc_swapper_latent_hyperswap(source_embedding)
+
+    def run_swapper_hyperswap(self, image, embedding, output, mask, swapper_model='HyperSwap 1A'):
+        self.face_swappers.run_swapper_hyperswap(image, embedding, output, mask, swapper_model)
 
     def run_swapper_cscs(self, image, embedding, output):
         self.face_swappers.run_swapper_cscs(image, embedding, output)

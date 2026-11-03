@@ -17,6 +17,7 @@ from app.ui.widgets.actions import card_actions
 from app.ui.widgets.actions import list_view_actions
 from app.ui.widgets.actions import save_load_actions
 import app.helpers.miscellaneous as misc_helpers
+from app.ui import macos_theme
 
 if TYPE_CHECKING:
     from app.ui.main_ui import MainWindow
@@ -108,8 +109,7 @@ class TargetMediaCardButton(CardButton):
         # Imposta lo stylesheet solo per questo pulsante
         self.setStyleSheet("""
         CardButton:checked {
-            background-color: #555555;
-            border: 2px solid #1abc9c;
+            border: 2px solid palette(highlight);
         }
         """)
 
@@ -343,8 +343,7 @@ class TargetFaceCardButton(CardButton):
         # Imposta lo stylesheet solo per questo pulsante
         self.setStyleSheet("""
         CardButton:checked {
-            background-color: #555555;
-            border: 2px solid #1abc9c;
+            border: 2px solid palette(highlight);
         }
         """)
         
@@ -511,8 +510,7 @@ class InputFaceCardButton(CardButton):
         # Imposta lo stylesheet solo per questo pulsante
         self.setStyleSheet("""
         CardButton:checked {
-            background-color: #555555;
-            border: 2px solid #1abc9c;
+            border: 2px solid palette(highlight);
         }
         """)
 
@@ -646,8 +644,7 @@ class EmbeddingCardButton(CardButton):
         # Imposta lo stylesheet solo per questo pulsante
         self.setStyleSheet("""
         CardButton:checked {
-            background-color: #555555;
-            border: 2px solid #1abc9c;
+            border: 2px solid palette(highlight);
         }
         """)
 
@@ -938,6 +935,18 @@ class ToggleButton(QtWidgets.QPushButton, ParametersWidget):
         
         rect = QtCore.QRect(0, 0, self.width(), self.height())
         
+        if macos_theme.is_active():
+            # macOS switch: accent track when on, gray when off, white knob with a soft shadow
+            track = self.palette().color(QtGui.QPalette.ColorRole.Highlight) if self.isChecked() else self.palette().color(QtGui.QPalette.ColorRole.Mid)
+            p.setBrush(track)
+            p.drawRoundedRect(0, 0, rect.width(), self.height(), self.height() / 2, self.height() / 2)
+            p.setBrush(QtGui.QColor(0, 0, 0, 50))
+            p.drawEllipse(self._circle_position, 2, 13, 13)
+            p.setBrush(QtGui.QColor('#ffffff'))
+            p.drawEllipse(self._circle_position, 1, 13, 13)
+            p.end()
+            return
+
         if self.isChecked():
             p.setBrush(QtGui.QColor(self._active_color))
             p.drawRoundedRect(0, 0, rect.width(), self.height(), self.height() / 2, self.height() / 2)

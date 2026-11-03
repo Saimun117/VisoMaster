@@ -116,7 +116,7 @@ class FaceLandmarkDetectors:
 
         image = image.permute(1,2,0)
 
-        mean = torch.tensor([104, 117, 123], dtype=torch.float32, device=self.models_processor.device)
+        mean = torch.tensor([104, 117, 123], dtype=torch.float32, device=self.models_processor.ort_device)
         image = torch.sub(image, mean)
 
         image = image.permute(2,0,1)
@@ -124,20 +124,17 @@ class FaceLandmarkDetectors:
 
         height, width = (512, 512)
         tmp = [width, height, width, height, width, height, width, height, width, height]
-        scale1 = torch.tensor(tmp, dtype=torch.float32, device=self.models_processor.device)
+        scale1 = torch.tensor(tmp, dtype=torch.float32, device=self.models_processor.ort_device)
 
-        conf = torch.empty((1,10752,2), dtype=torch.float32, device=self.models_processor.device).contiguous()
-        landmarks = torch.empty((1,10752,10), dtype=torch.float32, device=self.models_processor.device).contiguous()
+        conf = torch.empty((1,10752,2), dtype=torch.float32, device=self.models_processor.ort_device).contiguous()
+        landmarks = torch.empty((1,10752,10), dtype=torch.float32, device=self.models_processor.ort_device).contiguous()
 
         io_binding = self.models_processor.models['FaceLandmark5'].io_binding()
-        io_binding.bind_input(name='input', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
-        io_binding.bind_output(name='conf', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=(1,10752,2), buffer_ptr=conf.data_ptr())
-        io_binding.bind_output(name='landmarks', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=(1,10752,10), buffer_ptr=landmarks.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=(1,3,512,512), buffer_ptr=image.data_ptr())
+        io_binding.bind_output(name='conf', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=(1,10752,2), buffer_ptr=conf.data_ptr())
+        io_binding.bind_output(name='landmarks', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=(1,10752,10), buffer_ptr=landmarks.data_ptr())
 
-        if self.models_processor.device == "cuda":
-            torch.cuda.synchronize()
-        elif self.models_processor.device != "cpu":
-            self.models_processor.syncvec.cpu()
+        self.models_processor.synchronize()
         self.models_processor.models['FaceLandmark5'].run_with_iobinding(io_binding)
 
         scores = torch.squeeze(conf)[:, 1]
@@ -188,16 +185,13 @@ class FaceLandmarkDetectors:
         crop_image = torch.unsqueeze(crop_image, 0).contiguous()
 
         io_binding = self.models_processor.models['FaceLandmark68'].io_binding()
-        io_binding.bind_input(name='input', device_type=self.models_processor.device, device_id=0, element_type=np.float32,  shape=crop_image.size(), buffer_ptr=crop_image.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32,  shape=crop_image.size(), buffer_ptr=crop_image.data_ptr())
 
-        io_binding.bind_output('landmarks_xyscore', self.models_processor.device)
-        io_binding.bind_output('heatmaps', self.models_processor.device)
+        io_binding.bind_output('landmarks_xyscore', self.models_processor.ort_device)
+        io_binding.bind_output('heatmaps', self.models_processor.ort_device)
 
         # Sync and run model
-        if self.models_processor.device == "cuda":
-            torch.cuda.synchronize()
-        elif self.models_processor.device != "cpu":
-            self.models_processor.syncvec.cpu()
+        self.models_processor.synchronize()
         self.models_processor.models['FaceLandmark68'].run_with_iobinding(io_binding)
         net_outs = io_binding.copy_outputs_to_cpu()
         face_landmark_68 = net_outs[0]
@@ -229,15 +223,12 @@ class FaceLandmarkDetectors:
         aimg = aimg.to(dtype=torch.float32)
         aimg = self.models_processor.normalize(aimg)
         io_binding = self.models_processor.models['FaceLandmark3d68'].io_binding()
-        io_binding.bind_input(name='data', device_type=self.models_processor.device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
+        io_binding.bind_input(name='data', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
 
-        io_binding.bind_output('fc1', self.models_processor.device)
+        io_binding.bind_output('fc1', self.models_processor.ort_device)
 
         # Sync and run model
-        if self.models_processor.device == "cuda":
-            torch.cuda.synchronize()
-        elif self.models_processor.device != "cpu":
-            self.models_processor.syncvec.cpu()
+        self.models_processor.synchronize()
         self.models_processor.models['FaceLandmark3d68'].run_with_iobinding(io_binding)
         pred = io_binding.copy_outputs_to_cpu()[0][0]
 
@@ -288,15 +279,12 @@ class FaceLandmarkDetectors:
             crop_image = torch.unsqueeze(crop_image, 0).contiguous()
 
             io_binding = self.models_processor.models['FaceLandmark98'].io_binding()
-            io_binding.bind_input(name='input', device_type=self.models_processor.device, device_id=0, element_type=np.float32,  shape=crop_image.size(), buffer_ptr=crop_image.data_ptr())
+            io_binding.bind_input(name='input', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32,  shape=crop_image.size(), buffer_ptr=crop_image.data_ptr())
 
-            io_binding.bind_output('landmarks_xyscore', self.models_processor.device)
+            io_binding.bind_output('landmarks_xyscore', self.models_processor.ort_device)
 
             # Sync and run model
-            if self.models_processor.device == "cuda":
-                torch.cuda.synchronize()
-            elif self.models_processor.device != "cpu":
-                self.models_processor.syncvec.cpu()
+            self.models_processor.synchronize()
             self.models_processor.models['FaceLandmark98'].run_with_iobinding(io_binding)
             landmarks_xyscore = io_binding.copy_outputs_to_cpu()[0]
 
@@ -335,15 +323,12 @@ class FaceLandmarkDetectors:
         aimg = aimg.to(dtype=torch.float32)
         aimg = self.models_processor.normalize(aimg)
         io_binding = self.models_processor.models['FaceLandmark106'].io_binding()
-        io_binding.bind_input(name='data', device_type=self.models_processor.device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
+        io_binding.bind_input(name='data', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
 
-        io_binding.bind_output('fc1', self.models_processor.device)
+        io_binding.bind_output('fc1', self.models_processor.ort_device)
 
         # Sync and run model
-        if self.models_processor.device == "cuda":
-            torch.cuda.synchronize()
-        elif self.models_processor.device != "cpu":
-            self.models_processor.syncvec.cpu()
+        self.models_processor.synchronize()
         self.models_processor.models['FaceLandmark106'].run_with_iobinding(io_binding)
         pred = io_binding.copy_outputs_to_cpu()[0][0]
 
@@ -391,17 +376,14 @@ class FaceLandmarkDetectors:
         aimg = aimg.to(dtype=torch.float32)
         aimg = torch.div(aimg, 255.0)
         io_binding = self.models_processor.models['FaceLandmark203'].io_binding()
-        io_binding.bind_input(name='input', device_type=self.models_processor.device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
+        io_binding.bind_input(name='input', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
 
-        io_binding.bind_output('output', self.models_processor.device)
-        io_binding.bind_output('853', self.models_processor.device)
-        io_binding.bind_output('856', self.models_processor.device)
+        io_binding.bind_output('output', self.models_processor.ort_device)
+        io_binding.bind_output('853', self.models_processor.ort_device)
+        io_binding.bind_output('856', self.models_processor.ort_device)
 
         # Sync and run model
-        if self.models_processor.device == "cuda":
-            torch.cuda.synchronize()
-        elif self.models_processor.device != "cpu":
-            self.models_processor.syncvec.cpu()
+        self.models_processor.synchronize()
         self.models_processor.models['FaceLandmark203'].run_with_iobinding(io_binding)
         out_lst = io_binding.copy_outputs_to_cpu()
         out_pts = out_lst[2]
@@ -435,17 +417,14 @@ class FaceLandmarkDetectors:
         aimg = aimg.to(dtype=torch.float32)
         aimg = torch.div(aimg, 255.0)
         io_binding = self.models_processor.models['FaceLandmark478'].io_binding()
-        io_binding.bind_input(name='input_12', device_type=self.models_processor.device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
+        io_binding.bind_input(name='input_12', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32,  shape=aimg.size(), buffer_ptr=aimg.data_ptr())
 
-        io_binding.bind_output('Identity', self.models_processor.device)
-        io_binding.bind_output('Identity_1', self.models_processor.device)
-        io_binding.bind_output('Identity_2', self.models_processor.device)
+        io_binding.bind_output('Identity', self.models_processor.ort_device)
+        io_binding.bind_output('Identity_1', self.models_processor.ort_device)
+        io_binding.bind_output('Identity_2', self.models_processor.ort_device)
 
         # Sync and run model
-        if self.models_processor.device == "cuda":
-            torch.cuda.synchronize()
-        elif self.models_processor.device != "cpu":
-            self.models_processor.syncvec.cpu()
+        self.models_processor.synchronize()
         self.models_processor.models['FaceLandmark478'].run_with_iobinding(io_binding)
         landmarks, faceflag, blendshapes = io_binding.copy_outputs_to_cpu() # pylint: disable=unused-variable
         landmarks = landmarks.reshape( (1,478,3))
@@ -475,14 +454,11 @@ class FaceLandmarkDetectors:
                 landmark_for_score = torch.from_numpy(landmark_for_score).to(self.models_processor.device)
 
                 io_binding_bs = self.models_processor.models['FaceBlendShapes'].io_binding()
-                io_binding_bs.bind_input(name='input_points', device_type=self.models_processor.device, device_id=0, element_type=np.float32,  shape=tuple(landmark_for_score.shape), buffer_ptr=landmark_for_score.data_ptr())
-                io_binding_bs.bind_output('output', self.models_processor.device)
+                io_binding_bs.bind_input(name='input_points', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32,  shape=tuple(landmark_for_score.shape), buffer_ptr=landmark_for_score.data_ptr())
+                io_binding_bs.bind_output('output', self.models_processor.ort_device)
 
                 # Sync and run model
-                if self.models_processor.device == "cuda":
-                    torch.cuda.synchronize()
-                elif self.models_processor.device != "cpu":
-                    self.models_processor.syncvec.cpu()
+                self.models_processor.synchronize()
                 self.models_processor.models['FaceBlendShapes'].run_with_iobinding(io_binding_bs)
                 landmark_score = io_binding_bs.copy_outputs_to_cpu()[0] # pylint: disable=unused-variable
 

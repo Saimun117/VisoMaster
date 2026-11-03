@@ -4,7 +4,16 @@ import platform
 
 import torch
 import numpy as np
-from torch.cuda import nvtx
+try:
+    from torch.cuda import nvtx
+    _NVTX_AVAILABLE = True
+except Exception:
+    _NVTX_AVAILABLE = False
+    class nvtx:
+        @staticmethod
+        def range_push(msg): pass
+        @staticmethod
+        def range_pop(): pass
 
 from torchvision import transforms
 from torchvision.transforms import v2
@@ -19,7 +28,7 @@ SYSTEM_PLATFORM = platform.system()
 class FaceEditors:
     def __init__(self, models_processor: 'ModelsProcessor'):
         self.models_processor = models_processor
-        self.lp_mask_crop = faceutil.create_faded_inner_mask(size=(512, 512), border_thickness=5, fade_thickness=15, blur_radius=5, device=self.models_processor.device)
+        self.lp_mask_crop = faceutil.create_faded_inner_mask(size=(512, 512), border_thickness=5, fade_thickness=15, blur_radius=5, device=self.models_processor.ort_device)
         self.lp_mask_crop = torch.unsqueeze(self.lp_mask_crop, 0)
         try:
             self.lp_lip_array = np.array(self.load_lip_array())
@@ -79,30 +88,27 @@ class FaceEditors:
                 # prepare_source
                 I_s = torch.div(img.type(torch.float32), 255.)
                 I_s = torch.clamp(I_s, 0, 1)  # clamp to 0~1
-                I_s = torch.unsqueeze(I_s, 0).contiguous()
+                I_s = torch.unsqueeze(I_s, 0).to(self.models_processor.ort_device).contiguous()
 
-                pitch = torch.empty((1,66), dtype=torch.float32, device=self.models_processor.device).contiguous()
-                yaw = torch.empty((1,66), dtype=torch.float32, device=self.models_processor.device).contiguous()
-                roll = torch.empty((1,66), dtype=torch.float32, device=self.models_processor.device).contiguous()
-                t = torch.empty((1,3), dtype=torch.float32, device=self.models_processor.device).contiguous()
-                exp = torch.empty((1,63), dtype=torch.float32, device=self.models_processor.device).contiguous()
-                scale = torch.empty((1,1), dtype=torch.float32, device=self.models_processor.device).contiguous()
-                kp = torch.empty((1,63), dtype=torch.float32, device=self.models_processor.device).contiguous()
+                pitch = torch.empty((1,66), dtype=torch.float32, device=self.models_processor.ort_device).contiguous()
+                yaw = torch.empty((1,66), dtype=torch.float32, device=self.models_processor.ort_device).contiguous()
+                roll = torch.empty((1,66), dtype=torch.float32, device=self.models_processor.ort_device).contiguous()
+                t = torch.empty((1,3), dtype=torch.float32, device=self.models_processor.ort_device).contiguous()
+                exp = torch.empty((1,63), dtype=torch.float32, device=self.models_processor.ort_device).contiguous()
+                scale = torch.empty((1,1), dtype=torch.float32, device=self.models_processor.ort_device).contiguous()
+                kp = torch.empty((1,63), dtype=torch.float32, device=self.models_processor.ort_device).contiguous()
 
                 io_binding = motion_extractor_model.io_binding()
-                io_binding.bind_input(name='img', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=I_s.size(), buffer_ptr=I_s.data_ptr())
-                io_binding.bind_output(name='pitch', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=pitch.size(), buffer_ptr=pitch.data_ptr())
-                io_binding.bind_output(name='yaw', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=yaw.size(), buffer_ptr=yaw.data_ptr())
-                io_binding.bind_output(name='roll', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=roll.size(), buffer_ptr=roll.data_ptr())
-                io_binding.bind_output(name='t', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=t.size(), buffer_ptr=t.data_ptr())
-                io_binding.bind_output(name='exp', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=exp.size(), buffer_ptr=exp.data_ptr())
-                io_binding.bind_output(name='scale', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=scale.size(), buffer_ptr=scale.data_ptr())
-                io_binding.bind_output(name='kp', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=kp.size(), buffer_ptr=kp.data_ptr())
+                io_binding.bind_input(name='img', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=I_s.size(), buffer_ptr=I_s.data_ptr())
+                io_binding.bind_output(name='pitch', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=pitch.size(), buffer_ptr=pitch.data_ptr())
+                io_binding.bind_output(name='yaw', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=yaw.size(), buffer_ptr=yaw.data_ptr())
+                io_binding.bind_output(name='roll', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=roll.size(), buffer_ptr=roll.data_ptr())
+                io_binding.bind_output(name='t', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=t.size(), buffer_ptr=t.data_ptr())
+                io_binding.bind_output(name='exp', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=exp.size(), buffer_ptr=exp.data_ptr())
+                io_binding.bind_output(name='scale', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=scale.size(), buffer_ptr=scale.data_ptr())
+                io_binding.bind_output(name='kp', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=kp.size(), buffer_ptr=kp.data_ptr())
 
-                if self.models_processor.device == "cuda":
-                    torch.cuda.synchronize()
-                elif self.models_processor.device != "cpu":
-                    self.models_processor.syncvec.cpu()
+                self.models_processor.synchronize()
                 motion_extractor_model.run_with_iobinding(io_binding)
 
                 kp_info = {
@@ -163,18 +169,15 @@ class FaceEditors:
                 # prepare_source
                 I_s = torch.div(img.type(torch.float32), 255.)
                 I_s = torch.clamp(I_s, 0, 1)  # clamp to 0~1
-                I_s = torch.unsqueeze(I_s, 0).contiguous()
+                I_s = torch.unsqueeze(I_s, 0).to(self.models_processor.ort_device).contiguous()
 
-                output = torch.empty((1,32,16,64,64), dtype=torch.float32, device=self.models_processor.device).contiguous()
+                output = torch.empty((1,32,16,64,64), dtype=torch.float32, device=self.models_processor.ort_device).contiguous()
 
                 io_binding = appearance_feature_extractor_model.io_binding()
-                io_binding.bind_input(name='img', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=I_s.size(), buffer_ptr=I_s.data_ptr())
-                io_binding.bind_output(name='output', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
+                io_binding.bind_input(name='img', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=I_s.size(), buffer_ptr=I_s.data_ptr())
+                io_binding.bind_output(name='output', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=output.size(), buffer_ptr=output.data_ptr())
 
-                if self.models_processor.device == "cuda":
-                    torch.cuda.synchronize()
-                elif self.models_processor.device != "cpu":
-                    self.models_processor.syncvec.cpu()
+                self.models_processor.synchronize()
                 appearance_feature_extractor_model.run_with_iobinding(io_binding)
 
         return output
@@ -216,16 +219,13 @@ class FaceEditors:
                 stitching_eye_model = self.models_processor.models['LivePortraitStitchingEye']
 
                 feat_eye = faceutil.concat_feat(kp_source, eye_close_ratio).contiguous()
-                delta = torch.empty((1,63), dtype=torch.float32, device=self.models_processor.device).contiguous()
+                delta = torch.empty((1,63), dtype=torch.float32, device=self.models_processor.ort_device).contiguous()
 
                 io_binding = stitching_eye_model.io_binding()
-                io_binding.bind_input(name='input', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=feat_eye.size(), buffer_ptr=feat_eye.data_ptr())
-                io_binding.bind_output(name='output', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=delta.size(), buffer_ptr=delta.data_ptr())
+                io_binding.bind_input(name='input', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=feat_eye.size(), buffer_ptr=feat_eye.data_ptr())
+                io_binding.bind_output(name='output', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=delta.size(), buffer_ptr=delta.data_ptr())
 
-                if self.models_processor.device == "cuda":
-                    torch.cuda.synchronize()
-                elif self.models_processor.device != "cpu":
-                    self.models_processor.syncvec.cpu()
+                self.models_processor.synchronize()
                 stitching_eye_model.run_with_iobinding(io_binding)
 
         return delta.reshape(-1, kp_source.shape[1], 3)
@@ -267,16 +267,13 @@ class FaceEditors:
                 stitching_lip_model = self.models_processor.models['LivePortraitStitchingLip']
 
                 feat_lip = faceutil.concat_feat(kp_source, lip_close_ratio).contiguous()
-                delta = torch.empty((1,63), dtype=torch.float32, device=self.models_processor.device).contiguous()
+                delta = torch.empty((1,63), dtype=torch.float32, device=self.models_processor.ort_device).contiguous()
 
                 io_binding = stitching_lip_model.io_binding()
-                io_binding.bind_input(name='input', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=feat_lip.size(), buffer_ptr=feat_lip.data_ptr())
-                io_binding.bind_output(name='output', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=delta.size(), buffer_ptr=delta.data_ptr())
+                io_binding.bind_input(name='input', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=feat_lip.size(), buffer_ptr=feat_lip.data_ptr())
+                io_binding.bind_output(name='output', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=delta.size(), buffer_ptr=delta.data_ptr())
 
-                if self.models_processor.device == "cuda":
-                    torch.cuda.synchronize()
-                elif self.models_processor.device != "cpu":
-                    self.models_processor.syncvec.cpu()
+                self.models_processor.synchronize()
                 stitching_lip_model.run_with_iobinding(io_binding)
 
         return delta.reshape(-1, kp_source.shape[1], 3)
@@ -318,16 +315,13 @@ class FaceEditors:
                 stitching_model = self.models_processor.models['LivePortraitStitching']
 
                 feat_stiching = faceutil.concat_feat(kp_source, kp_driving).contiguous()
-                delta = torch.empty((1,65), dtype=torch.float32, device=self.models_processor.device).contiguous()
+                delta = torch.empty((1,65), dtype=torch.float32, device=self.models_processor.ort_device).contiguous()
 
                 io_binding = stitching_model.io_binding()
-                io_binding.bind_input(name='input', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=feat_stiching.size(), buffer_ptr=feat_stiching.data_ptr())
-                io_binding.bind_output(name='output', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=delta.size(), buffer_ptr=delta.data_ptr())
+                io_binding.bind_input(name='input', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=feat_stiching.size(), buffer_ptr=feat_stiching.data_ptr())
+                io_binding.bind_output(name='output', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=delta.size(), buffer_ptr=delta.data_ptr())
 
-                if self.models_processor.device == "cuda":
-                    torch.cuda.synchronize()
-                elif self.models_processor.device != "cpu":
-                    self.models_processor.syncvec.cpu()
+                self.models_processor.synchronize()
                 stitching_model.run_with_iobinding(io_binding)
 
         return delta
@@ -430,17 +424,14 @@ class FaceEditors:
                 kp_source = kp_source.contiguous()
                 kp_driving = kp_driving.contiguous()
 
-                out = torch.empty((1,3,512,512), dtype=torch.float32, device=self.models_processor.device).contiguous()
+                out = torch.empty((1,3,512,512), dtype=torch.float32, device=self.models_processor.ort_device).contiguous()
                 io_binding = warping_spade_model.io_binding()
-                io_binding.bind_input(name='feature_3d', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=feature_3d.size(), buffer_ptr=feature_3d.data_ptr())
-                io_binding.bind_input(name='kp_driving', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=kp_driving.size(), buffer_ptr=kp_driving.data_ptr())
-                io_binding.bind_input(name='kp_source', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=kp_source.size(), buffer_ptr=kp_source.data_ptr())
-                io_binding.bind_output(name='out', device_type=self.models_processor.device, device_id=0, element_type=np.float32, shape=out.size(), buffer_ptr=out.data_ptr())
+                io_binding.bind_input(name='feature_3d', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=feature_3d.size(), buffer_ptr=feature_3d.data_ptr())
+                io_binding.bind_input(name='kp_driving', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=kp_driving.size(), buffer_ptr=kp_driving.data_ptr())
+                io_binding.bind_input(name='kp_source', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=kp_source.size(), buffer_ptr=kp_source.data_ptr())
+                io_binding.bind_output(name='out', device_type=self.models_processor.ort_device, device_id=0, element_type=np.float32, shape=out.size(), buffer_ptr=out.data_ptr())
 
-                if self.models_processor.device == "cuda":
-                    torch.cuda.synchronize()
-                elif self.models_processor.device != "cpu":
-                    self.models_processor.syncvec.cpu()
+                self.models_processor.synchronize()
                 warping_spade_model.run_with_iobinding(io_binding)
 
         return out
@@ -495,7 +486,7 @@ class FaceEditors:
         temp = torch.div(img, 255)
         temp = v2.functional.normalize(temp, (0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
         temp = torch.reshape(temp, (1, 3, 512, 512))
-        outpred = torch.empty((1, 19, 512, 512), dtype=torch.float32, device=self.models_processor.device).contiguous()
+        outpred = torch.empty((1, 19, 512, 512), dtype=torch.float32, device=self.models_processor.ort_device).contiguous()
 
         self.models_processor.run_faceparser(temp, outpred)
 
@@ -537,7 +528,7 @@ class FaceEditors:
         }
 
         # Pre-calculated kernel per dilatazione (kernel 3x3)
-        kernel = torch.ones((1, 1, 3, 3), dtype=torch.float32, device=self.models_processor.device)
+        kernel = torch.ones((1, 1, 3, 3), dtype=torch.float32, device=self.models_processor.ort_device)
 
         # Apply blur if blur kernel size is greater than 1
         blur_kernel_size = parameters['FaceEditorBlurAmountSlider'] * 2 + 1
@@ -548,7 +539,7 @@ class FaceEditors:
         face_parses = []
         for attribute, attribute_value in face_attributes.items():
             if attribute_value:  # Se l'attributo è abilitato
-                attribute_idxs = torch.tensor([attribute], device=self.models_processor.device)
+                attribute_idxs = torch.tensor([attribute], device=self.models_processor.ort_device)
 
                 # Create the mask: white for the part, black for the rest
                 attribute_parse = torch.isin(outpred, attribute_idxs).float()
@@ -569,13 +560,13 @@ class FaceEditors:
 
             else:
                 # If the attribute is not enabled, use a black mask
-                attribute_parse = torch.zeros((512, 512), dtype=torch.float32, device=self.models_processor.device)
+                attribute_parse = torch.zeros((512, 512), dtype=torch.float32, device=self.models_processor.ort_device)
             
             # Add the mask to the list
             face_parses.append(attribute_parse)
 
         # Create a final mask to combine all the individual masks
-        combined_mask = torch.zeros((512, 512), dtype=torch.float32, device=self.models_processor.device)
+        combined_mask = torch.zeros((512, 512), dtype=torch.float32, device=self.models_processor.ort_device)
         for face_parse in face_parses:
             # Add batch and channel dimensions for interpolation
             face_parse = face_parse.unsqueeze(0).unsqueeze(0)  # From (512, 512) to (1, 1, 512, 512)

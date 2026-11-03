@@ -8,6 +8,8 @@ import numpy as np
 from pyqttoast import Toast, ToastPreset, ToastPosition
 from PySide6 import QtWidgets,QtCore,QtGui
 
+from app.ui import macos_theme
+
 from app.ui.widgets import widget_components
 from app.ui.widgets.settings_layout_data import SETTINGS_LAYOUT_DATA
 import app.helpers.miscellaneous as misc_helpers
@@ -248,10 +250,19 @@ def _update_gpu_memory_progressbar(main_window: 'MainWindow'):
 
 @QtCore.Slot(int, int)
 def set_gpu_memory_progressbar_value(main_window: 'MainWindow', memory_used, memory_total):
+    if memory_total == 0:
+        main_window.vramProgressBar.setMaximum(1)
+        main_window.vramProgressBar.setValue(0)
+        main_window.vramProgressBar.setFormat('N/A')
+        return
     main_window.vramProgressBar.setMaximum(memory_total)
     main_window.vramProgressBar.setValue(memory_used)
     main_window.vramProgressBar.setFormat(f'{round(memory_used/1024,2)} GB / {round(memory_total/1024,2)} GB (%p%)')
-    if (memory_used/memory_total)> 0.85:
+    if macos_theme.is_active():
+        # The theme stylesheet colors the bar; only flag high memory use
+        main_window.vramProgressBar.setFormat(f'Memory {round(memory_used/1024,1)} / {round(memory_total/1024,1)} GB')
+        main_window.vramProgressBar.setStyleSheet('QProgressBar::chunk { background-color: #FF9F0A; }' if memory_used/memory_total > 0.85 else '')
+    elif (memory_used/memory_total)> 0.85:
         main_window.vramProgressBar.setStyleSheet('''
             QProgressBar::chunk {
                 background-color: #911414;  /* Set chunk color to green */
