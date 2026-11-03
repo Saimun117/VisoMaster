@@ -51,8 +51,13 @@ jobs:
       - name: Build app and DMG
         env:
           PYTHON: python
-          VISOMASTER_VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '0.1.6' }}
-        run: ./scripts/build_macos_dmg.sh
+          TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        run: |
+          # v0.1.6-mac -> 0.1.6 for the app's version number
+          VERSION="${TAG#v}"
+          VERSION="${VERSION%-mac}"
+          export VISOMASTER_VERSION="${VERSION:-0.1.6}"
+          ./scripts/build_macos_dmg.sh
 
       - name: Self-test the packaged app (model download, Core ML, ffmpeg)
         env:
